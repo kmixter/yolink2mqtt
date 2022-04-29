@@ -57,10 +57,24 @@ $ pipenv shell
 You will probably want to run this as a service, so it is always running,
 which is probably easiest to do with something like `supervisord`.
 
+An example supervisord configuration:
+```
+[program:yolink2mqtt]
+user = pi
+environment = SHELL=/bin/bash
+directory = /yolink2mqtt
+command = pipenv run python main.py
+stdout_logfile = /var/log/supervisor/%(program_name)s.log
+stderr_logfile = /var/log/supervisor/%(program_name)s.log
+autorestart = true
+```
+
 As soon as the script starts, the compatible sensors should show up in Home Assistant.
 Currently this script supports:
 * Door sensor
 * Temp/Humidity sensors
+
+(Feel free to PR for others, I only have these.)
 
 ### Debugging
 

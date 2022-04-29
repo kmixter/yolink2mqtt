@@ -77,7 +77,11 @@ class MQTTClient:
             payload = 'ON' if state == 'open' else 'OFF'
         elif report['event'] == 'THSensor.Report':
             payload = report['data']['temperature']
-            unit_of_measurement = '°' + report['data']['mode'].upper()
+            mode = report['data']['mode'].upper()
+            if mode == 'F':
+                # Temperature is always reported in C, so convert to F if requested
+                payload = round(float(payload) * 1.8 + 32)
+            unit_of_measurement = '°' + mode
             config = self.device_configs[device_id]
             config['unit_of_measurement'] = unit_of_measurement
             self.relay.publish(self.device_config_topics[device_id], json.dumps(config, indent=0))
