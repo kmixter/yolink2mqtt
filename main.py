@@ -54,16 +54,7 @@ def main():
         yolink_service = BaseService(uaid=os.getenv('UAID'),
                                      secret_key=os.getenv('SECRET_KEY'))
 
-        # example call - get device list
-        r = yolink_service.call_service(path='/open/yolink/v2/api',
-                                        method='POST',
-                                        additional_headers={},
-                                        post_data={
-                                            'method': 'Home.getDeviceList'
-                                        })
-        print(f"My device list: {r.json()}")
-
-        # get home id - which we need to subscribe for events of our devices
+       # get home id - which we need to subscribe for events of our devices
         home_id = yolink_service.get_home_id()
 
         mqtt = MQTTClient(
@@ -73,13 +64,22 @@ def main():
             transport='websockets'
         )
 
+        # example call - get device list
+        r = yolink_service.call_service(path='/open/yolink/v2/api',
+                                        method='POST',
+                                        additional_headers={},
+                                        post_data={
+                                            'method': 'Home.getDeviceList'
+                                        })
+        mqtt.send_discovery(r.json())
+
         mqtt.client.subscribe(f"yl-home/{home_id}/+/report", qos=0)
 
         # loop for 119 minutes and wait for events - after which we will exit,
         # so we don't need to worry about MQTT access token expiration in 2h
-        mqtt.client.loop_start()
+        mqtt.loop_start()
         time.sleep(2*60*60 - 60)
-        mqtt.client.loop_stop()
+        mqtt.loop_stop()
 
         # # loop forever and wait for events
         # mqtt.loop_forever()

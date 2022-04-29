@@ -1,3 +1,4 @@
+import json
 import paho.mqtt.client as mqtt
 from time import time
 
@@ -35,6 +36,15 @@ class MQTTClient:
                             port=8003 if transport == 'tcp' else 8004,
                             keepalive=60)
 
+        self.relay = mqtt.Client()
+        self.relay.connect('localhost')
+
+        self.relay.on_log = self.on_log
+
+        self.devices = {}
+        self.device_configs = {}
+        self.device_config_topics = {}
+
     def on_connect(self, client, userdata, flags, rc):
         """The callback for when the client receives a CONNACK response from the server."""
         print("Connected with result code " + str(rc))
@@ -47,17 +57,73 @@ class MQTTClient:
         """The callback for when a PUBLISH message is received from the server."""
         print(msg.topic + " " + str(msg.payload))
 
-        # TODO - this is where you would add your code which would filter the events
-        # and trigger whatever needs to be triggered for specific events
+        # Example door sensor message:
+        # {"event":"DoorSensor.Alert","time":1651209111950,"msgid":"1651209111950","data":{"state":"closed","alertType":"normal","battery":4,"version":"041a","loraInfo":{"signal":-34,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c0200012614"}
+
+        # Example THSensor message:
+	#{"event":"THSensor.Report","time":1651210270552,"msgid":"1651210270552","data":{"state":"normal","alarm":{"lowBattery":false,"lowTemp":false,"highTemp":false,"lowHumidity":false,"highHumidity":false,"period":false,"code":0},"battery":3,"mode":"f","interval":0,"temperature":-13.1,"humidity":48.3,"tempLimit":{"max":-3.4,"min":-25.7},"humidityLimit":{"max":100,"min":0},"tempCorrection":0,"humidityCorrection":0,"version":"0392","loraInfo":{"signal":-49,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c02000559bf"}
+
+        report = json.loads(msg.payload)
+        device_id = report['deviceId']
+        if not device_id in self.devices:
+            print('Skipping ignored device %s\n' % device_id)
+            return
+
+        device = self.devices[device_id]
+        topic = self.device_configs[device_id]['state_topic']
+
+        if report['event'] == 'DoorSensor.Alert':
+            state = report['data']['state']
+            payload = 'ON' if state == 'open' else 'OFF'
+        elif report['event'] == 'THSensor.Report':
+            payload = report['data']['temperature']
+            unit_of_measurement = '°' + report['data']['mode'].upper()
+            config = self.device_configs[device_id]
+            config['unit_of_measurement'] = unit_of_measurement
+            self.relay.publish(self.device_config_topics[device_id], json.dumps(config, indent=0))
+        else:
+            print('Unhandled report type: ' + report['event']);
+            return
+
+        self.relay.publish(topic, payload)
+
+    def send_discovery(self, device_response):
+        print('device response: %s\n' % device_response)
+        print('keys %s\n' % device_response.keys())
+        for x in device_response['data']['devices']:
+            device_id = x['deviceId']
+            type = x['type']
+            ha_config = {
+              'name': x['name'],
+              'unique_id': 'yo_' + device_id
+            }
+            ha_platform = None
+            if type == 'DoorSensor':
+                ha_platform = 'binary_sensor'
+                ha_config['device_class'] = 'door'
+            elif type == 'THSensor':
+                ha_platform = 'sensor'
+                # Default to Fahrenheit, in config, but resend it if the state indicates C.
+                ha_config['unit_of_measurement'] = '°F'
+            else:
+                print('Ignoring unhandled device %s' % x['name'])
+                next
+
+            topic = f'homeassistant/{ha_platform}/{x["deviceId"]}/config';
+            ha_config['state_topic'] = f'homeassistant/{ha_platform}/{x["deviceId"]}/state'
+            self.relay.publish(topic, json.dumps(ha_config, indent=0))
+            self.devices[device_id] = x
+            self.device_configs[device_id] = ha_config
+            self.device_config_topics[device_id] = topic
 
     @classmethod
     def on_log(cls, client, userdata, level, buff):
         print(f"Log from MQTT: {buff}")
 
-    def loop_forever(self):
-        """Blocking call that processes network traffic, dispatches callbacks and
-        handles reconnecting.
-        Other loop*() functions are available that give a threaded interface and a
-        manual interface.
-        """
-        self.client.loop_forever()
+    def loop_start(self):
+        self.client.loop_start()
+        self.relay.loop_start()
+
+    def loop_stop(self):
+        self.client.loop_end()
+        self.relay.loop_end()
