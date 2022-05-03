@@ -58,10 +58,14 @@ class MQTTClient:
         print(msg.topic + " " + str(msg.payload))
 
         # Example door sensor message:
-        # {"event":"DoorSensor.Alert","time":1651209111950,"msgid":"1651209111950","data":{"state":"closed","alertType":"normal","battery":4,"version":"041a","loraInfo":{"signal":-34,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c0200012614"}
+        # {"event":"DoorSensor.Alert","time":1651209111950,"msgid":"1651209111950","data":{"state":"closed","alertType":"normal","battery":4,"version":"041a","loraInfo":{"signal":-34,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}
 
         # Example THSensor message:
-	#{"event":"THSensor.Report","time":1651210270552,"msgid":"1651210270552","data":{"state":"normal","alarm":{"lowBattery":false,"lowTemp":false,"highTemp":false,"lowHumidity":false,"highHumidity":false,"period":false,"code":0},"battery":3,"mode":"f","interval":0,"temperature":-13.1,"humidity":48.3,"tempLimit":{"max":-3.4,"min":-25.7},"humidityLimit":{"max":100,"min":0},"tempCorrection":0,"humidityCorrection":0,"version":"0392","loraInfo":{"signal":-49,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c02000559bf"}
+	#{"event":"THSensor.Report","time":1651210270552,"msgid":"1651210270552","data":{"state":"normal","alarm":{"lowBattery":false,"lowTemp":false,"highTemp":false,"lowHumidity":false,"highHumidity":false,"period":false,"code":0},"battery":3,"mode":"f","interval":0,"temperature":-13.1,"humidity":48.3,"tempLimit":{"max":-3.4,"min":-25.7},"humidityLimit":{"max":100,"min":0},"tempCorrection":0,"humidityCorrection":0,"version":"0392","loraInfo":{"signal":-49,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}
+
+	# Example MotionSensor messages:
+	#{"event":"MotionSensor.Alert","time":1651552712756,"msgid":"1651552712756","data":{"state":"alert","battery":4,"version":"0466","ledAlarm":true,"alertInterval":30,"nomotionDelay":1,"sensitivity":3,"loraInfo":{"signal":-80,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}
+	#{"event":"MotionSensor.StatusChange","time":1651552790870,"msgid":"1651552790869","data":{"state":"normal","battery":4,"version":"0466","ledAlarm":true,"alertInterval":30,"nomotionDelay":1,"sensitivity":3,"loraInfo":{"signal":-78,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}'
 
         report = json.loads(msg.payload)
         device_id = report['deviceId']
@@ -85,6 +89,9 @@ class MQTTClient:
             config = self.device_configs[device_id]
             config['unit_of_measurement'] = unit_of_measurement
             self.relay.publish(self.device_config_topics[device_id], json.dumps(config, indent=0))
+        elif report['event'] == 'MotionSensor.Alert' or report['event'] == 'MotionSensor.StatusChange':
+            state = report['data']['state']
+            payload = 'ON' if state == 'alert' else 'OFF'
         else:
             print('Unhandled report type: ' + report['event']);
             return
@@ -109,6 +116,9 @@ class MQTTClient:
                 ha_platform = 'sensor'
                 # Default to Fahrenheit, in config, but resend it if the state indicates C.
                 ha_config['unit_of_measurement'] = '°F'
+            elif type == 'MotionSensor':
+                ha_platform = 'binary_sensor'
+                ha_config['device_class'] = 'motion'
             else:
                 print('Ignoring unhandled device %s' % x['name'])
                 next
