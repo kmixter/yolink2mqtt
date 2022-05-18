@@ -73,7 +73,8 @@ As soon as the script starts, the compatible sensors should show up in Home Assi
 Currently this script supports:
 * Door sensor
 * Temp/Humidity sensors
-* Indoor (and possibly) outdoor motion sensors
+* Indoor and outdoor motion sensors
+* Vibration sensors (show up as motion sensors)
 
 (Feel free to PR for others, I only have these.)
 

@@ -1,5 +1,6 @@
 import json
 import paho.mqtt.client as mqtt
+import os
 from time import time
 
 
@@ -38,8 +39,9 @@ class MQTTClient:
 
         self.relay = mqtt.Client()
         self.relay.connect('localhost')
-
+        self.relay.subscribe('homeassistant/status')
         self.relay.on_log = self.on_log
+        self.relay.on_message = self.on_ha_message
 
         self.devices = {}
         self.device_configs = {}
@@ -53,10 +55,17 @@ class MQTTClient:
         # reconnect then subscriptions will be renewed.
         client.subscribe(f"yl-home/{self.home_id}/+/report")
 
+    def on_ha_message(self, client, userdata, msg):
+        msg_str = msg.payload.decode()
+        print(msg.topic + " found " + msg_str)
+        if msg_str == 'online':
+            print('Exiting now to restart and send discovery')
+            os._exit(0)
+        print('Ignoring status <' + msg_str + '>')
+
     def on_message(self, client, userdata, msg):
         """The callback for when a PUBLISH message is received from the server."""
         print(msg.topic + " " + str(msg.payload))
-
         # Example door sensor message:
         # {"event":"DoorSensor.Alert","time":1651209111950,"msgid":"1651209111950","data":{"state":"closed","alertType":"normal","battery":4,"version":"041a","loraInfo":{"signal":-34,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}
 
@@ -66,6 +75,10 @@ class MQTTClient:
 	# Example MotionSensor messages:
 	#{"event":"MotionSensor.Alert","time":1651552712756,"msgid":"1651552712756","data":{"state":"alert","battery":4,"version":"0466","ledAlarm":true,"alertInterval":30,"nomotionDelay":1,"sensitivity":3,"loraInfo":{"signal":-80,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}
 	#{"event":"MotionSensor.StatusChange","time":1651552790870,"msgid":"1651552790869","data":{"state":"normal","battery":4,"version":"0466","ledAlarm":true,"alertInterval":30,"nomotionDelay":1,"sensitivity":3,"loraInfo":{"signal":-78,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"###"}'
+
+	# Example VibrationSensor messages:
+	#{"event":"VibrationSensor.Alert","time":1652844610795,"msgid":"1652844610795","data":{"state":"alert","battery":4,"alertInterval":60,"noVibrationDelay":5,"sensitivity":8,"devTemperature":25,"loraInfo":{"signal":-78,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c010003b2b8"}
+        #{"event":"VibrationSensor.StatusChange","time":1652844911291,"msgid":"1652844911290","data":{"state":"normal","battery":4,"alertInterval":60,"noVibrationDelay":5,"sensitivity":8,"devTemperature":24,"loraInfo":{"signal":-78,"gatewayId":"d88b4c1603011a02","gateways":1}},"deviceId":"d88b4c010003b2b8"}
 
         report = json.loads(msg.payload)
         device_id = report['deviceId']
@@ -89,7 +102,7 @@ class MQTTClient:
             config = self.device_configs[device_id]
             config['unit_of_measurement'] = unit_of_measurement
             self.relay.publish(self.device_config_topics[device_id], json.dumps(config, indent=0))
-        elif report['event'] == 'MotionSensor.Alert' or report['event'] == 'MotionSensor.StatusChange':
+        elif report['event'] in ['MotionSensor.Alert', 'MotionSensor.StatusChange', 'VibrationSensor.Alert', 'VibrationSensor.StatusChange']:
             state = report['data']['state']
             payload = 'ON' if state == 'alert' else 'OFF'
         else:
@@ -116,7 +129,7 @@ class MQTTClient:
                 ha_platform = 'sensor'
                 # Default to Fahrenheit, in config, but resend it if the state indicates C.
                 ha_config['unit_of_measurement'] = '°F'
-            elif type == 'MotionSensor':
+            elif type == 'MotionSensor' or type == 'VibrationSensor':
                 ha_platform = 'binary_sensor'
                 ha_config['device_class'] = 'motion'
             else:
