@@ -143,6 +143,15 @@ class MQTTClient:
             self.device_configs[device_id] = ha_config
             self.device_config_topics[device_id] = topic
 
+        with open('/tmp/state_script.sh', 'wt') as f:
+            for key in self.device_configs:
+                x = self.device_configs[key]
+                f.write('# %s\n' % x['name'])
+                if 'device_class' in x and x['device_class'] in ['door', 'motion']:
+                    f.write('mosquitto_pub -t %s -m "OFF"\n' % x['state_topic'])
+                f.write('\n')
+
+
     @classmethod
     def on_log(cls, client, userdata, level, buff):
         print(f"Log from MQTT: {buff}")
